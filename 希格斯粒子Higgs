@@ -1,0 +1,161 @@
+使用Qiskit 1.0+模拟希格斯玻色子产生与衰变的概念性量子电路
+"""
+import numpy as np
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
+from qiskit_aer import AerSimulator
+from qiskit.visualization import plot_histogram
+import matplotlib.pyplot as plt
+
+def create_higgs_production_circuit():
+    """
+    创建一个模拟希格斯玻色子产生与衰变过程的量子电路。
+    量子比特分配：
+    q[0], q[1]: 对撞粒子（如质子组分）的状态
+    q[2]: 希格斯玻色子产生标志
+    q[3], q[4]: 来自希格斯衰变的两个Z玻色子
+    q[5], q[6], q[7], q[8]: 四个衰变产物（如轻子）的标志位
+    """
+    # 定义量子寄存器和经典寄存器（用于测量）
+    qreg = QuantumRegister(9, 'q')
+    creg = ClassicalRegister(9, 'c')
+    qc = QuantumCircuit(qreg, creg)
+    
+    # 第1步：初始化对撞粒子状态（制备叠加态模拟不确定性）
+    qc.h(0)  # 对撞粒子1处于叠加态
+    qc.h(1)  # 对撞粒子2处于叠加态
+    
+    # 第2步：模拟对撞相互作用，可能产生希格斯玻色子
+    # 使用受控操作：当两个对撞粒子处于特定状态时，“产生”希格斯
+    # 这里用一个多控门作为概念演示（实际物理更复杂）
+    qc.ccx(0, 1, 2)  # 如果q0和q1都是|1>，则翻转q2（标志希格斯产生）
+    
+    # 第3步：模拟希格斯玻色子衰变为两个Z玻色子
+    # 如果希格斯产生(q2为|1>)，则制备两个Z玻色子(q3, q4)
+    qc.cx(2, 3)  # 将希格斯的存在信息传递给Z1
+    qc.cx(2, 4)  # 将希格斯的存在信息传递给Z2
+    
+    # 第4步：模拟Z玻色子衰变为轻子对
+    # Z玻色子(q3)衰变
+    qc.ccx(3, 2, 5)  # 第一个衰变产物，依赖于Z1和希格斯
+    qc.ccx(3, 2, 6)  # 第二个衰变产物
+    
+    # Z玻色子(q4)衰变
+    qc.ccx(4, 2, 7)  # 第三个衰变产物
+    qc.ccx(4, 2, 8)  # 第四个衰变产物
+    
+    # 添加屏障以便可视化
+    qc.barrier()
+    
+    # 第5步：测量所有量子比特
+    qc.measure(qreg, creg)
+    
+    return qc
+
+def run_simulation(qc, shots=8192):
+    """运行量子电路模拟"""
+    # 使用Aer模拟器（无噪声）
+    simulator = AerSimulator()
+    
+    # 编译电路以适应模拟器后端
+    compiled_circuit = transpile(qc, simulator)
+    
+    # 运行模拟
+    job = simulator.run(compiled_circuit, shots=shots)
+    result = job.result()
+    counts = result.get_counts()
+    
+    return counts
+
+def analyze_higgs_events(counts):
+    """
+    分析模拟结果，识别可能包含希格斯玻色子的事件。
+    根据电路设计，当q2（希格斯标志位）为1时，表示事件中产生了希格斯。
+    """
+    total_events = sum(counts.values())
+    higgs_events = 0
+    higgs_decay_events = 0  # 希格斯衰变为4个产物的事件
+    
+    for state_str, count in counts.items():
+        # 将二进制字符串转换为数组（注意：Qiskit中最高位在最左边）
+        # state_str[7]对应q2（从右往左数第3位，因为总共9位）
+        higgs_bit = state_str[7]  # q2的位置
+        
+        if higgs_bit == '1':
+            higgs_events += count
+            
+            # 检查四个衰变产物是否都存在（q5, q6, q7, q8都为1）
+            if state_str[0] == '1' and state_str[1] == '1' and state_str[2] == '1' and state_str[3] == '1':
+                higgs_decay_events += count
+    
+    print(f"总事件数: {total_events}")
+    print(f"包含希格斯玻色子的事件: {higgs_events} ({higgs_events/total_events*100:.2f}%)")
+    print(f"希格斯完全衰变为四个产物的事件: {higgs_decay_events} ({higgs_decay_events/total_events*100:.2f}%)")
+    
+    return higgs_events, higgs_decay_events
+
+def main():
+    """主函数：执行完整的模拟流程"""
+    print("=" * 60)
+    print("希格斯玻色子产生与衰变的量子电路模拟")
+    print("基于量子搜索在希格斯重建中的应用概念[citation:2]")
+    print("=" * 60)
+    
+    # 1. 创建量子电路
+    print("\n1. 创建量子电路...")
+    qc = create_higgs_production_circuit()
+    print("量子电路深度:", qc.depth())
+    print("量子电路操作数:", qc.size())
+    
+    # 可视化电路（前部分，避免太复杂）
+    print("\n量子电路图（简化显示）:")
+    print(qc.draw(output='text', fold=50))
+    
+    # 2. 运行模拟
+    print("\n2. 运行量子模拟...")
+    shots = 5000  # 模拟的事件数
+    counts = run_simulation(qc, shots=shots)
+    
+    # 3. 分析结果
+    print("\n3. 模拟结果分析:")
+    higgs_events, higgs_decay_events = analyze_higgs_events(counts)
+    
+    # 4. 可视化结果
+    print("\n4. 结果可视化...")
+    
+    # 选择出现频率最高的10个状态进行显示
+    sorted_counts = dict(sorted(counts.items(), key=lambda x: x[1], reverse=True)[:10])
+    
+    fig, ax = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # 绘制完整统计直方图
+    plot_histogram(counts, ax=ax[0], bar_labels=False)
+    ax[0].set_title(f"所有测量结果 (总shots={shots})")
+    ax[0].tick_params(axis='x', rotation=45)
+    
+    # 绘制前10个状态的直方图
+    plot_histogram(sorted_counts, ax=ax[1], bar_labels=False)
+    ax[1].set_title("前10个最可能的状态")
+    ax[1].tick_params(axis='x', rotation=45)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    # 5. 解释关键结果状态
+    print("\n5. 关键状态解释:")
+    print("状态格式: q8 q7 q6 q5 q4 q3 q2 q1 q0 (q0在最右边)")
+    print("重要量子比特:")
+    print("  q2: 希格斯玻色子产生标志 (1=产生)")
+    print("  q3, q4: Z玻色子")
+    print("  q5-q8: 四个衰变产物")
+    
+    # 找出最可能的希格斯事件状态
+    higgs_state_counts = {k: v for k, v in counts.items() if k[7] == '1'}
+    if higgs_state_counts:
+        most_likely = max(higgs_state_counts.items(), key=lambda x: x[1])
+        print(f"\n最常见的希格斯事件状态: {most_likely[0]}")
+        print(f"出现次数: {most_likely[1]} ({most_likely[1]/shots*100:.1f}%)")
+    
+    return qc, counts
+
+if __name__ == "__main__":
+    qc, counts = main()
