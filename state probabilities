@@ -1,0 +1,20 @@
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.quantum_info import Statevector
+from qiskit.visualization import plot_bloch_multivector, plot_state_city
+
+# 创建初始态 |0⟩
+qc = QuantumCircuit(1)
+
+# 应用量子门演化
+qc.h(0)  # Hadamard门：|0⟩ -> (|0⟩ + |1⟩)/√2
+qc.ry(np.pi/4, 0)  # Y旋转门
+
+# 获取演化后的波函数
+state = Statevector.from_instruction(qc)
+print("波函数:", state)
+print("概率分布:", state.probabilities())
+
+# 可视化
+plot_bloch_multivector(state)
+plot_state_city(state)
