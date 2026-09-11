@@ -1,0 +1,114 @@
+from qiskit import QuantumCircuit, transpile
+from qiskit_aer import AerSimulator
+import matplotlib.pyplot as plt
+
+def quantum_coin_flip(num_flips=1000):
+    """
+    使用量子计算模拟抛硬币实验
+    
+    参数:
+    num_flips: 抛硬币的次数
+    """
+    
+    # 创建量子电路：1个量子比特，1个经典比特
+    qc = QuantumCircuit(1, 1)
+    
+    # 应用Hadamard门创建叠加态 (|0⟩ + |1⟩)/√2
+    qc.h(0)
+    
+    # 测量量子比特到经典比特
+    qc.measure(0, 0)
+    
+    # 使用模拟器
+    simulator = AerSimulator()
+    
+    # 多次运行实验
+    compiled_circuit = transpile(qc, simulator)
+    job = simulator.run(compiled_circuit, shots=num_flips)
+    result = job.result()
+    counts = result.get_counts()
+    
+    return counts, qc
+
+def analyze_results(counts, num_flips):
+    """
+    分析并可视化结果
+    """
+    heads = counts.get('0', 0)
+    tails = counts.get('1', 0)
+    
+    print(f"抛硬币总次数: {num_flips}")
+    print(f"正面 (0): {heads} 次, 比例: {heads/num_flips:.4f}")
+    print(f"反面 (1): {tails} 次, 比例: {tails/num_flips:.4f}")
+    
+    # 绘制结果
+    plt.figure(figsize=(10, 4))
+    
+    plt.subplot(1, 2, 1)
+    labels = ['正面 (0)', '反面 (1)']
+    values = [heads, tails]
+    colors = ['#ff9999', '#66b3ff']
+    plt.pie(values, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+    plt.title('量子抛硬币结果分布')
+    
+    plt.subplot(1, 2, 2)
+    plt.bar(labels, values, color=colors)
+    plt.title('量子抛硬币次数统计')
+    plt.ylabel('次数')
+    
+    for i, v in enumerate(values):
+        plt.text(i, v + max(values)*0.01, str(v), ha='center', va='bottom')
+    
+    plt.tight_layout()
+    plt.show()
+
+def single_coin_flip():
+    """
+    单次抛硬币
+    """
+    qc = QuantumCircuit(1, 1)
+    qc.h(0)
+    qc.measure(0, 0)
+    
+    simulator = AerSimulator()
+    compiled_circuit = transpile(qc, simulator)
+    job = simulator.run(compiled_circuit, shots=1)
+    result = job.result()
+    counts = result.get_counts()
+    
+    outcome = list(counts.keys())[0]
+    result_text = "正面" if outcome == '0' else "反面"
+    
+    print(f"单次抛硬币结果: {result_text} ({outcome})")
+    return outcome
+
+# 执行实验
+if __name__ == "__main__":
+    print("=== 量子抛硬币实验 ===\n")
+    
+    # 1. 单次抛硬币
+    print("1. 单次抛硬币:")
+    single_coin_flip()
+    print()
+    
+    # 2. 多次抛硬币
+    print("2. 多次抛硬币统计:")
+    num_flips = 1000
+    counts, circuit = quantum_coin_flip(num_flips)
+    
+    # 显示量子电路
+    print("\n量子电路图:")
+    print(circuit.draw(output='text'))
+    
+    # 分析结果
+    analyze_results(counts, num_flips)
+    
+    # 3. 不同次数下的概率收敛
+    print("\n3. 概率收敛分析:")
+    test_counts = [10, 100, 1000, 10000]
+    
+    for count in test_counts:
+        counts_temp, _ = quantum_coin_flip(count)
+        heads = counts_temp.get('0', 0)
+        prob = heads / count
+        print(f"抛{count:5d}次 - 正面概率: {prob:.4f}")
