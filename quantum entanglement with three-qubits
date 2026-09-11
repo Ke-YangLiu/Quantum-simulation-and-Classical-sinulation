@@ -1,0 +1,167 @@
+import numpy as np
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
+from qiskit.quantum_info import Statevector
+from qiskit.visualization import plot_histogram, plot_bloch_multivector
+from qiskit_aer import AerSimulator
+import matplotlib.pyplot as plt
+
+def create_ghz_state():
+    """创建三量子比特GHZ态 (|000⟩ + |111⟩)/√2"""
+    qc = QuantumCircuit(3)
+    
+    # 创建GHZ态的步骤
+    qc.h(0)          # 在第一个量子比特上应用Hadamard门
+    qc.cx(0, 1)      # CNOT门：控制比特0，目标比特1
+    qc.cx(1, 2)      # CNOT门：控制比特1，目标比特2
+    
+    return qc
+
+def create_w_state():
+    """创建三量子比特W态 (|001⟩ + |010⟩ + |100⟩)/√3"""
+    qc = QuantumCircuit(3)
+    
+    # 创建W态的步骤
+    theta = 2 * np.arccos(1 / np.sqrt(3))
+    qc.ry(theta, 0)
+    qc.ch(0, 1)
+    qc.x(0)
+    qc.ccx(0, 1, 2)  # Toffoli门
+    qc.x(0)
+    
+    return qc
+
+def simulate_quantum_circuit(qc, shots=1000):
+    """模拟量子电路并返回结果"""
+    # 使用状态向量模拟器查看量子态
+    simulator = AerSimulator(method='statevector')
+    
+    # 添加测量
+    measured_circuit = qc.copy()
+    measured_circuit.measure_all()
+    
+    # 运行模拟
+    job = simulator.run(transpile(measured_circuit, simulator), shots=shots)
+    result = job.result()
+    counts = result.get_counts()
+    
+    return counts
+
+def analyze_entanglement():
+    """分析量子纠缠特性"""
+    print("=== 三量子比特纠缠态模拟 ===\n")
+    
+    # 1. GHZ态
+    print("1. GHZ态分析:")
+    ghz_circuit = create_ghz_state()
+    print("GHZ态电路:")
+    print(ghz_circuit)
+    
+    # 获取状态向量
+    ghz_state = Statevector.from_instruction(ghz_circuit)
+    print(f"\nGHZ态的状态向量:")
+    for i, amp in enumerate(ghz_state):
+        if abs(amp) > 1e-10:  # 只显示非零振幅
+            print(f"|{i:03b}⟩: {amp:.4f}")
+    
+    # 模拟测量结果
+    ghz_counts = simulate_quantum_circuit(ghz_circuit)
+    print(f"\nGHZ态测量结果: {ghz_counts}")
+    
+    # 2. W态
+    print("\n" + "="*50)
+    print("2. W态分析:")
+    w_circuit = create_w_state()
+    print("W态电路:")
+    print(w_circuit)
+    
+    # 获取状态向量
+    w_state = Statevector.from_instruction(w_circuit)
+    print(f"\nW态的状态向量:")
+    for i, amp in enumerate(w_state):
+        if abs(amp) > 1e-10:
+            print(f"|{i:03b}⟩: {amp:.4f}")
+    
+    # 模拟测量结果
+    w_counts = simulate_quantum_circuit(w_circuit)
+    print(f"\nW态测量结果: {w_counts}")
+    
+    # 3. 验证纠缠特性
+    print("\n" + "="*50)
+    print("3. 纠缠特性验证:")
+    
+    # GHZ态的纠缠特性
+    print("GHZ态特性:")
+    print("- 当测量一个量子比特时，其他两个量子比特的状态立即确定")
+    print("- 如果第一个量子比特测量为|0⟩，其他两个也必须为|0⟩")
+    print("- 如果第一个量子比特测量为|1⟩，其他两个也必须为|1⟩")
+    
+    # W态的纠缠特性
+    print("\nW态特性:")
+    print("- 任意一个量子比特测量为|1⟩时，剩下两个量子比特处于贝尔态")
+    print("- 比GHZ态更 robust，失去一个量子比特后仍保持纠缠")
+    
+    return ghz_circuit, w_circuit, ghz_counts, w_counts
+
+def demonstrate_quantum_correlation():
+    """演示量子关联"""
+    print("\n" + "="*50)
+    print("量子关联演示:")
+    
+    # 创建GHZ态并演示关联测量
+    qc = QuantumCircuit(3, 3)
+    qc.h(0)
+    qc.cx(0, 1)
+    qc.cx(1, 2)
+    
+    # 测量所有量子比特
+    qc.measure([0, 1, 2], [0, 1, 2])
+    
+    # 模拟
+    simulator = AerSimulator()
+    job = simulator.run(transpile(qc, simulator), shots=1000)
+    result = job.result()
+    counts = result.get_counts()
+    
+    print("GHZ态测量结果分布:")
+    for state, count in sorted(counts.items()):
+        print(f"状态 {state}: {count} 次")
+    
+    # 验证关联
+    total_correlated = counts.get('000', 0) + counts.get('111', 0)
+    correlation_percentage = total_correlated / 1000 * 100
+    print(f"\n关联状态 (000 和 111) 的比例: {correlation_percentage:.1f}%")
+
+def plot_results(ghz_counts, w_counts):
+    """绘制结果图表"""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    
+    # 绘制GHZ态结果
+    plot_histogram(ghz_counts, ax=ax1, title="GHZ态测量结果")
+    ax1.set_ylabel("概率")
+    
+    # 绘制W态结果
+    plot_histogram(w_counts, ax=ax2, title="W态测量结果")
+    ax2.set_ylabel("概率")
+    
+    plt.tight_layout()
+    plt.show()
+
+# 运行主程序
+if __name__ == "__main__":
+    # 分析纠缠态
+    ghz_circuit, w_circuit, ghz_counts, w_counts = analyze_entanglement()
+    
+    # 演示量子关联
+    demonstrate_quantum_correlation()
+    
+    # 绘制结果
+    plot_results(ghz_counts, w_counts)
+    
+    # 额外的可视化：电路图
+    print("\n" + "="*50)
+    print("量子电路可视化:")
+    print("GHZ态电路:")
+    print(ghz_circuit.draw(output='text'))
+    
+    print("\nW态电路:")
+    print(w_circuit.draw(output='text'))
