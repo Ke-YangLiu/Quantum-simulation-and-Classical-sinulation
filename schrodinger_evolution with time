@@ -1,0 +1,42 @@
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.linalg import expm
+
+def schrodinger_evolution(hamiltonian, initial_state, time_points):
+    """
+    数值求解薛定谔方程
+    """
+    states = []
+    for t in time_points:
+        # 计算演化算子 U = exp(-iHt)
+        U = expm(-1j * hamiltonian * t)
+        evolved_state = U @ initial_state
+        states.append(evolved_state)
+    return states
+
+# 定义简单哈密顿量 (量子谐振子近似)
+H = np.array([[1, 0.5], 
+              [0.5, 1]])
+
+# 初始态 |0⟩
+psi0 = np.array([1, 0])
+
+# 时间点
+times = np.linspace(0, 4*np.pi, 100)
+
+# 计算演化
+evolved_states = schrodinger_evolution(H, psi0, times)
+
+# 绘制概率演化
+prob_0 = [np.abs(state[0])**2 for state in evolved_states]
+prob_1 = [np.abs(state[1])**2 for state in evolved_states]
+
+plt.figure(figsize=(10, 6))
+plt.plot(times, prob_0, label='|0⟩ 概率')
+plt.plot(times, prob_1, label='|1⟩ 概率')
+plt.xlabel('时间')
+plt.ylabel('概率')
+plt.legend()
+plt.title('量子态时间演化')
+plt.grid(True)
+plt.show()
