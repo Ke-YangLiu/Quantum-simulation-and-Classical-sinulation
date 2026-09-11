@@ -1,0 +1,286 @@
+# Quantum-simulation-and-Classical-sinulation
+Quantum simulation and Quantum computing
+from os import execle
+import numpy as np
+from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
+from qiskit_aer import Aer, QasmSimulator  
+from qiskit.quantum_info import Statevector
+import random
+from typing import List, Tuple, Optional
+import time
+
+class OptimizedBB84Protocol:
+    def __init__(self, num_bits: int = 100):
+        self.num_bits = num_bits
+        self.backend = Aer.get_backend('qasm_simulator')
+        
+        # 初始化变量
+        self.alice_bits: Optional[List[int]] = None
+        self.alice_bases: Optional[List[int]] = None
+        self.bob_bases: Optional[List[int]] = None
+        self.bob_bits: Optional[List[int]] = None
+        self.alice_key: Optional[List[int]] = None
+        self.bob_key: Optional[List[int]] = None
+        
+    def _generate_random_sequence(self, length: int) -> List[int]:
+        """生成随机序列的通用方法"""
+        return [random.randint(0, 1) for _ in range(length)]
+    
+    def prepare_qubits_batch(self) -> QuantumCircuit:
+        """批量准备所有量子比特 - 优化性能"""
+        # 创建包含所有量子比特的单个电路
+        qr = QuantumRegister(self.num_bits, 'qubits')
+        cr = ClassicalRegister(self.num_bits, 'measure')
+        qc = QuantumCircuit(qr, cr)
+        
+        # 批量应用X门
+        for i, bit in enumerate(self.alice_bits):
+            if bit == 1:
+                qc.x(i)
+        
+        # 批量应用Hadamard门
+        for i, base in enumerate(self.alice_bases):
+            if base == 1:  # X基
+                qc.h(i)
+                
+        return qc
+    
+    def measure_qubits_batch(self, circuit: QuantumCircuit) -> List[int]:
+        """批量测量所有量子比特 - 优化性能"""
+        # Bob应用Hadamard门进行基变换
+        for i, base in enumerate(self.bob_bases):
+            if base == 1:  # X基测量
+                circuit.h(i)
+        
+        # 批量测量所有量子比特
+        circuit.measure(range(self.num_bits), range(self.num_bits))
+        
+        # 执行模拟
+        job = execle(circuit, self.backend, shots=1, optimization_level=1)
+        result = job.result()
+        counts = result.get_counts()
+        
+        # 获取测量结果并转换为列表
+        measured_bits_str = list(counts.keys())[0]
+        return [int(bit) for bit in reversed(measured_bits_str)]  # Qiskit使用小端序
+    
+    def reconcile_bases(self) -> List[int]:
+        """基协调 - 返回匹配基的索引列表"""
+        return [i for i in range(self.num_bits) 
+                if self.alice_bases[i] == self.bob_bases[i]]
+    
+    def estimate_error_rate(self, matching_indices: List[int], 
+                          sample_fraction: float = 0.2) -> Tuple[float, List[int]]:
+        """估计错误率，使用比例采样而不是固定数量"""
+        if not matching_indices:
+            return 0.0, []
+            
+        sample_size = max(1, int(len(matching_indices) * sample_fraction))
+        sample_indices = random.sample(matching_indices, sample_size)
+        
+        errors = sum(1 for idx in sample_indices 
+                    if self.alice_bits[idx] != self.bob_bits[idx])
+        
+        return errors / sample_size, sample_indices
+    
+    def privacy_amplification(self, raw_key: List[int], 
+                            final_length: Optional[int] = None) -> List[int]:
+        """简单的隐私放大 - 使用随机矩阵进行哈希"""
+        if final_length is None:
+            final_length = len(raw_key) // 2
+            
+        # 生成随机矩阵用于哈希
+        random_matrix = np.random.randint(0, 2, (final_length, len(raw_key)))
+        amplified_key = []
+        
+        for row in random_matrix:
+            # 计算内积模2
+            bit = sum(raw_key[i] * row[i] for i in range(len(raw_key))) % 2
+            amplified_key.append(bit)
+            
+        return amplified_key
+    
+    def run_protocol(self, error_threshold: float = 0.1, 
+                   enable_privacy_amplification: bool = True) -> Tuple[Optional[List[int]], 
+                                                                     Optional[List[int]], 
+                                                                     float]:
+        """运行优化的BB84协议"""
+        print("=== 优化的BB84量子密钥分发协议模拟 ===")
+        print(f"初始比特数: {self.num_bits}")
+        start_time = time.time()
+        
+        # 步骤1: Alice生成随机比特和基
+        self.alice_bits = self._generate_random_sequence(self.num_bits)
+        self.alice_bases = self._generate_random_sequence(self.num_bits)
+        
+        alice_x_bases = sum(self.alice_bases)
+        alice_z_bases = self.num_bits - alice_x_bases
+        
+        print(f"\n1. Alice准备阶段:")
+        print(f"   - 生成 {len(self.alice_bits)} 个随机比特")
+        print(f"   - 基选择: {alice_x_bases} 个X基, {alice_z_bases} 个Z基")
+        
+        # 步骤2: Alice批量准备量子比特
+        quantum_circuit = self.prepare_qubits_batch()
+        print("2. Alice完成了量子比特的批量制备")
+        
+        # 步骤3: Bob生成基并批量测量
+        self.bob_bases = self._generate_random_sequence(self.num_bits)
+        self.bob_bits = self.measure_qubits_batch(quantum_circuit)
+        
+        bob_x_bases = sum(self.bob_bases)
+        bob_z_bases = self.num_bits - bob_x_bases
+        
+        print(f"3. Bob测量阶段:")
+        print(f"   - 基选择: {bob_x_bases} 个X基, {bob_z_bases} 个Z基")
+        print(f"   - 完成批量量子测量")
+        
+        # 步骤4: 基协调
+        matching_indices = self.reconcile_bases()
+        matching_rate = len(matching_indices) / self.num_bits
+        
+        print(f"\n4. 基协调完成:")
+        print(f"   - 匹配的基数量: {len(matching_indices)}/{self.num_bits}")
+        print(f"   - 匹配率: {matching_rate:.2%}")
+        
+        if not matching_indices:
+            print("   错误: 没有匹配的基，协议终止")
+            return None, None, 1.0
+        
+        # 步骤5: 错误率估计
+        error_rate, sample_indices = self.estimate_error_rate(matching_indices)
+        
+        print(f"\n5. 错误率估计:")
+        print(f"   - 采样比特数: {len(sample_indices)}")
+        print(f"   - 估计错误率: {error_rate:.2%}")
+        
+        # 步骤6: 生成最终密钥
+        if error_rate < error_threshold:
+            raw_alice_key = [self.alice_bits[idx] for idx in matching_indices]
+            raw_bob_key = [self.bob_bits[idx] for idx in matching_indices]
+            
+            # 隐私放大
+            if enable_privacy_amplification and len(raw_alice_key) >= 4:
+                final_length = max(1, len(raw_alice_key) // 2)
+                self.alice_key = self.privacy_amplification(raw_alice_key, final_length)
+                self.bob_key = self.privacy_amplification(raw_bob_key, final_length)
+            else:
+                self.alice_key = raw_alice_key
+                self.bob_key = raw_bob_key
+            
+            key_consistency = self.alice_key == self.bob_key
+            
+            print(f"\n6. 最终密钥生成:")
+            print(f"   - 原始密钥长度: {len(raw_alice_key)} 比特")
+            print(f"   - 最终密钥长度: {len(self.alice_key)} 比特")
+            print(f"   - 密钥一致性: {key_consistency}")
+            print(f"   - 隐私放大: {'是' if enable_privacy_amplification else '否'}")
+            
+            if len(self.alice_key) > 0:
+                display_len = min(20, len(self.alice_key))
+                print(f"   - Alice密钥前{display_len}位: {''.join(map(str, self.alice_key[:display_len]))}")
+                print(f"   - Bob密钥前{display_len}位:   {''.join(map(str, self.bob_key[:display_len]))}")
+        else:
+            print(f"\n6. 错误率过高 ({error_rate:.2%} > {error_threshold:.0%})，放弃本次密钥分发")
+            self.alice_key = None
+            self.bob_key = None
+        
+        end_time = time.time()
+        print(f"\n=== 性能统计 ===")
+        print(f"总执行时间: {end_time - start_time:.3f} 秒")
+        print(f"最终密钥效率: {len(self.alice_key)/self.num_bits:.2%}" 
+              if self.alice_key else "密钥分发失败")
+        
+        return self.alice_key, self.bob_key, error_rate
+
+
+class BB84Analyzer:
+    """BB84协议分析工具类"""
+    
+    @staticmethod
+    def demonstrate_quantum_states():
+        """演示BB84中使用的量子态"""
+        print("=== BB84协议量子态演示 ===")
+        
+        states_info = [
+            ("Z基 |0⟩", []),
+            ("Z基 |1⟩", ['x']),
+            ("X基 |+⟩", ['h']),
+            ("X基 |-⟩", ['x', 'h'])
+        ]
+        
+        for name, gates in states_info:
+            qc = QuantumCircuit(1)
+            for gate in gates:
+                if gate == 'x':
+                    qc.x(0)
+                elif gate == 'h':
+                    qc.h(0)
+            statevector = Statevector.from_instruction(qc)
+            print(f"{name:12}: {statevector}")
+    
+    @staticmethod
+    def calculate_security_metrics(alice_key: List[int], bob_key: List[int], 
+                                 error_rate: float) -> dict:
+        """计算安全指标"""
+        if not alice_key or not bob_key:
+            return {}
+            
+        metrics = {
+            'key_length': len(alice_key),
+            'error_rate': error_rate,
+            'key_match': alice_key == bob_key,
+            'entropy_estimate': -error_rate * np.log2(error_rate) - (1-error_rate) * np.log2(1-error_rate) 
+                              if 0 < error_rate < 1 else 0
+        }
+        return metrics
+
+
+def run_multiple_trials(num_trials: int = 5, bits_per_trial: int = 50):
+    """运行多次试验并统计结果"""
+    print(f"\n{'='*50}")
+    print(f"运行 {num_trials} 次BB84协议试验")
+    print(f"{'='*50}")
+    
+    success_count = 0
+    total_key_bits = 0
+    error_rates = []
+    
+    for trial in range(num_trials):
+        print(f"\n--- 试验 {trial + 1} ---")
+        protocol = OptimizedBB84Protocol(num_bits=bits_per_trial)
+        alice_key, bob_key, error_rate = protocol.run_protocol()
+        
+        if alice_key and bob_key and alice_key == bob_key:
+            success_count += 1
+            total_key_bits += len(alice_key)
+            error_rates.append(error_rate)
+    
+    print(f"\n{'='*50}")
+    print(f"试验结果统计:")
+    print(f"成功次数: {success_count}/{num_trials}")
+    print(f"成功率: {success_count/num_trials:.1%}")
+    if success_count > 0:
+        print(f"平均密钥长度: {total_key_bits/success_count:.1f} 比特")
+        print(f"平均错误率: {np.mean(error_rates):.2%}")
+
+
+# 运行示例
+if __name__ == "__main__":
+    # 演示量子态
+    BB84Analyzer.demonstrate_quantum_states()
+    
+    # 运行单次优化的BB84协议
+    print("\n" + "="*60)
+    bb84 = OptimizedBB84Protocol(num_bits=100)
+    alice_key, bob_key, error_rate = bb84.run_protocol()
+    
+    # 计算安全指标
+    if alice_key and bob_key:
+        metrics = BB84Analyzer.calculate_security_metrics(alice_key, bob_key, error_rate)
+        print(f"\n安全指标分析:")
+        for key, value in metrics.items():
+            print(f"  {key}: {value}")
+    
+    # 运行多次试验
+    run_multiple_trials(num_trials=3, bits_per_trial=80)
